@@ -4,10 +4,7 @@ use mines::Config;
 
 pub fn main() {
 
-    let config = Config::build().unwrap_or_else(|err| {
-        eprintln!("Could not parse arguments: {err}");
-        process::exit(1);
-    });
+    let config = Config::build();
 
     if let Err(e) = mines::run(config) {
         eprintln!("Game ran into an error: {e}");

@@ -9,7 +9,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn build() -> Result<Config, &'static str> {
+    pub fn build() -> Config {
         let mut rows = 16;
         let mut cols = 30;
 
@@ -25,6 +25,6 @@ impl Config {
             ap.parse_args_or_exit();
         }
 
-        Ok(Config { rows, cols })
+        Config { rows, cols }
     }
 }
