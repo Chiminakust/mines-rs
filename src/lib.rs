@@ -12,6 +12,9 @@ pub use crate::config::Config;
 
 pub fn run(config: Config) -> Result<(), String> {
     println!("Game with {} x {}", config.rows, config.cols);
+
+    let minefield = Minefield::new(config.rows, config.cols);
+
     let win_width: u32 = 800;
     let win_height: u32 = (win_width / config.cols) * config.rows;
 
@@ -66,4 +69,46 @@ pub fn run(config: Config) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+struct Minefield {
+    tiles: Vec<Vec<Tile>>,
+}
+
+impl Minefield {
+    pub fn new(rows: u32, cols: u32) -> Minefield {
+        let tiles = vec![
+            vec![
+                Tile {
+                    hidden: true,
+                    content: TileContent::Blank,
+                    flag: None
+                };
+                cols.try_into().unwrap()
+            ];
+            rows.try_into().unwrap()
+        ];
+
+        Minefield { tiles }
+    }
+}
+
+#[derive(Clone)]
+struct Tile {
+    hidden: bool,
+    content: TileContent,
+    flag: Option<Flag>,
+}
+
+#[derive(Clone)]
+enum TileContent {
+    Blank,
+    Mine,
+    Danger(i32),
+}
+
+#[derive(Clone)]
+enum Flag {
+    Mine,
+    Question,
 }

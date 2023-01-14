@@ -3,7 +3,6 @@ use std::process;
 use mines::Config;
 
 pub fn main() {
-
     let config = Config::build();
 
     if let Err(e) = mines::run(config) {
