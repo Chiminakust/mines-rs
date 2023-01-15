@@ -50,12 +50,13 @@ pub fn run(config: Config) -> Result<(), String> {
     canvas.clear();
 
     let target = Rect::new(40, 40, 300, 100);
-    canvas.copy(&texture, None, Some(target))?;
 
     canvas.present();
+
     let mut event_pump = sdl_context.event_pump()?;
 
     'running: loop {
+        // event loop
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -82,14 +83,44 @@ pub fn run(config: Config) -> Result<(), String> {
             }
         }
 
-        /* clear screen */
-        // canvas.set_draw_color(Color::RGB(255, 0, 0));
-        // canvas.clear();
+        // clear screen
+        canvas.set_draw_color(Color::RGB(255, 0, 0));
+        canvas.clear();
 
-        // canvas.set_draw_color(Color::RGB(0, 255, 255));
+        // draw rectangle
+        canvas.set_draw_color(Color::RGB(0, 255, 255));
+
+        let tile_w = 20;
+
+        let tile_h = tile_w;
+        let tile_surface_1 = font
+            .render("1")
+            .blended(Color::RGB(0, 0, 0))
+            .map_err(|e| e.to_string())?;
+        let tile_texture = texture_creator
+            .create_texture_from_surface(&tile_surface_1)
+            .map_err(|e| e.to_string())?;
+
+        for (col, line) in minefield.tiles.iter().enumerate() {
+            for (row, tile) in line.iter().enumerate() {
+                let draw_zone = Rect::new(
+                    (10 + (row * tile_w)).try_into().unwrap(),
+                    (10 + (col * tile_h)).try_into().unwrap(),
+                    tile_w.try_into().unwrap(),
+                    tile_h.try_into().unwrap()
+                );
+                canvas.draw_rect(draw_zone).unwrap();
+                canvas.copy(&tile_texture, None, Some(draw_zone))?;
+            }
+        }
+
         // canvas.draw_rect(Rect::new(10, 10, 20, 20)).unwrap();
 
-        // canvas.present();
+        // // draw text
+        // canvas.copy(&texture, None, Some(target))?;
+
+        // display canvas
+        canvas.present();
 
 
         // frame rate limit
