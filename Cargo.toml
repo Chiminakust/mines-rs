@@ -6,5 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sdl2 = "0.35"
 argparse = "0.2.2"
+
+[dependencies.sdl2]
+version = "0.35"
+default-features = false
+features = ["ttf"]
