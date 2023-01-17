@@ -4,8 +4,12 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
+use sdl2::rect::{Point, Rect};
+use sdl2::render::{Canvas, Texture, TextureCreator};
+use sdl2::ttf;
+use sdl2::video::{Window, WindowContext};
 
+use std::error::Error;
 use std::time::Duration;
 
 mod config;
@@ -32,24 +36,11 @@ pub fn run(config: Config) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    // need to create a texture for the font (i think?)
-    let texture_creator = canvas.texture_creator();
-
-    // load a font
-    let mut font = ttf_context.load_font("assets/fonts/lm-mono-font/Lmmono12Regular-K7qoZ.otf", 128)?;
-    font.set_style(sdl2::ttf::FontStyle::BOLD);
-    let surface = font
-        .render("hello ttf!1234567890")
-        .blended(Color::RGB(0, 0, 0))
-        .map_err(|e| e.to_string())?;
-    let texture = texture_creator
-        .create_texture_from_surface(&surface)
-        .map_err(|e| e.to_string())?;
+    let minefield_renderer = MinefieldRenderer::new(&canvas, &ttf_context, &minefield).unwrap();
+    // need to create a texture for the font
 
     canvas.set_draw_color(Color::RGB(255, 0, 0));
     canvas.clear();
-
-    let target = Rect::new(40, 40, 300, 100);
 
     canvas.present();
 
@@ -72,10 +63,18 @@ pub fn run(config: Config) -> Result<(), String> {
                     ..
                 } => match mouse_btn {
                     MouseButton::Left => {
-                        println!("x,y = {},{}, button = left, clicks = {}", x, y, clicks)
+                        let point = Point::new(x, y);
+                        println!(
+                            "x,y = {},{}, button = left, clicks = {}",
+                            point.x, point.y, clicks
+                        )
                     }
                     MouseButton::Right => {
-                        println!("x,y = {},{}, button = right, clicks = {}", x, y, clicks)
+                        let point = Point::new(x, y);
+                        println!(
+                            "x,y = {},{}, button = right, clicks = {}",
+                            point.x, point.y, clicks
+                        )
                     }
                     _ => {}
                 },
@@ -87,41 +86,11 @@ pub fn run(config: Config) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(255, 0, 0));
         canvas.clear();
 
-        // draw rectangle
-        canvas.set_draw_color(Color::RGB(0, 255, 255));
-
-        let tile_w = 20;
-
-        let tile_h = tile_w;
-        let tile_surface_1 = font
-            .render("1")
-            .blended(Color::RGB(0, 0, 0))
-            .map_err(|e| e.to_string())?;
-        let tile_texture = texture_creator
-            .create_texture_from_surface(&tile_surface_1)
-            .map_err(|e| e.to_string())?;
-
-        for (col, line) in minefield.tiles.iter().enumerate() {
-            for (row, tile) in line.iter().enumerate() {
-                let draw_zone = Rect::new(
-                    (10 + (row * tile_w)).try_into().unwrap(),
-                    (10 + (col * tile_h)).try_into().unwrap(),
-                    tile_w.try_into().unwrap(),
-                    tile_h.try_into().unwrap()
-                );
-                canvas.draw_rect(draw_zone).unwrap();
-                canvas.copy(&tile_texture, None, Some(draw_zone))?;
-            }
-        }
-
-        // canvas.draw_rect(Rect::new(10, 10, 20, 20)).unwrap();
-
-        // // draw text
-        // canvas.copy(&texture, None, Some(target))?;
+        // draw tiles of minefield
+        minefield_renderer.draw_tiles(&mut canvas);
 
         // display canvas
         canvas.present();
-
 
         // frame rate limit
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
@@ -134,6 +103,8 @@ pub fn run(config: Config) -> Result<(), String> {
 
 struct Minefield {
     tiles: Vec<Vec<Tile>>,
+    rows: u32,
+    cols: u32,
 }
 
 impl Minefield {
@@ -150,7 +121,7 @@ impl Minefield {
             rows.try_into().unwrap()
         ];
 
-        Minefield { tiles }
+        Minefield { tiles, rows, cols }
     }
 }
 
@@ -172,4 +143,86 @@ enum TileContent {
 enum Flag {
     Mine,
     Question,
+}
+
+struct MinefieldRenderer {
+    tiles_coords: Vec<Rect>,
+    textures: MinefieldRendererTextures,
+}
+
+impl MinefieldRenderer {
+    pub fn new(
+        canvas: &Canvas<Window>,
+        ttf_context: &ttf::Sdl2TtfContext,
+        minefield: &Minefield,
+    ) -> Result<MinefieldRenderer, Box<dyn Error>> {
+        // compute where the tiles will be on the screen
+        let rows = minefield.rows;
+        let cols = minefield.cols;
+        let origin = (10, 10);
+        let tile_size = (20, 20);
+        let tiles_coords = (1..(rows * cols))
+            .map(|x: u32| {
+                Rect::new(
+                    (origin.0 + ((x % cols) * (tile_size.0 + 5)))
+                        .try_into()
+                        .unwrap(),
+                    (origin.1 + ((x % rows) * (tile_size.1 + 5)))
+                        .try_into()
+                        .unwrap(),
+                    tile_size.0.try_into().unwrap(),
+                    tile_size.1.try_into().unwrap(),
+                )
+            })
+            .collect();
+
+        let mut font =
+            ttf_context.load_font("assets/fonts/lm-mono-font/Lmmono12Regular-K7qoZ.otf", 128)?;
+        font.set_style(sdl2::ttf::FontStyle::BOLD);
+
+        // texture creator for later
+        let texture_creator = canvas.texture_creator();
+
+        let textures = MinefieldRendererTextures::new(font, &texture_creator).unwrap();
+
+        Ok(MinefieldRenderer {
+            tiles_coords,
+            textures,
+        })
+    }
+
+    pub fn draw_tiles(&self, canvas: &mut Canvas<Window>) -> Result<(), Box<dyn Error>> {
+        canvas.set_draw_color(Color::RGB(0, 255, 255));
+
+        for draw_zone in self.tiles_coords.iter() {
+            canvas.fill_rect(*draw_zone).unwrap();
+            canvas.copy(&self.textures.tile_danger_1, None, Some(*draw_zone))?;
+        }
+
+        Ok(())
+    }
+}
+
+struct MinefieldRendererTextures {
+    tile_danger_1: Texture,
+}
+
+impl MinefieldRendererTextures {
+    pub fn new(
+        font: ttf::Font,
+        texture_creator: &TextureCreator<WindowContext>,
+    ) -> Result<MinefieldRendererTextures, Box<dyn Error>> {
+        // TODO create the textures here so we own them and don't have to fight
+        // with the compiler to have them
+
+        let tile_surface_1 = font
+            .render("1")
+            .blended(Color::RGB(0, 0, 0))
+            .map_err(|e| e.to_string())?;
+        let tile_danger_1 = texture_creator
+            .create_texture_from_surface(&tile_surface_1)
+            .map_err(|e| e.to_string())?;
+
+        Ok(MinefieldRendererTextures { tile_danger_1 })
+    }
 }

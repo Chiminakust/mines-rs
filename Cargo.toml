@@ -11,4 +11,4 @@ argparse = "0.2.2"
 [dependencies.sdl2]
 version = "0.35"
 default-features = false
-features = ["ttf"]
+features = ["ttf", "unsafe_textures"]
