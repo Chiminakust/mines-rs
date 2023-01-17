@@ -161,13 +161,13 @@ impl MinefieldRenderer {
         let cols = minefield.cols;
         let origin = (10, 10);
         let tile_size = (20, 20);
-        let tiles_coords = (1..(rows * cols))
+        let tiles_coords = (0..(rows * cols))
             .map(|x: u32| {
                 Rect::new(
-                    (origin.0 + ((x % cols) * (tile_size.0 + 5)))
+                    (origin.0 + ((x / cols) * (tile_size.0 + 5)))
                         .try_into()
                         .unwrap(),
-                    (origin.1 + ((x % rows) * (tile_size.1 + 5)))
+                    (origin.1 + ((x % cols) * (tile_size.1 + 5)))
                         .try_into()
                         .unwrap(),
                     tile_size.0.try_into().unwrap(),
@@ -194,7 +194,9 @@ impl MinefieldRenderer {
     pub fn draw_tiles(&self, canvas: &mut Canvas<Window>) -> Result<(), Box<dyn Error>> {
         canvas.set_draw_color(Color::RGB(0, 255, 255));
 
+        println!("drawing tiles");
         for draw_zone in self.tiles_coords.iter() {
+            println!("drawing in {}, {}", draw_zone.x, draw_zone.y);
             canvas.fill_rect(*draw_zone).unwrap();
             canvas.copy(&self.textures.tile_danger_1, None, Some(*draw_zone))?;
         }
@@ -205,6 +207,7 @@ impl MinefieldRenderer {
 
 struct MinefieldRendererTextures {
     tile_danger_1: Texture,
+    tile_danger_2: Texture,
 }
 
 impl MinefieldRendererTextures {
@@ -212,8 +215,6 @@ impl MinefieldRendererTextures {
         font: ttf::Font,
         texture_creator: &TextureCreator<WindowContext>,
     ) -> Result<MinefieldRendererTextures, Box<dyn Error>> {
-        // TODO create the textures here so we own them and don't have to fight
-        // with the compiler to have them
 
         let tile_surface_1 = font
             .render("1")
@@ -222,7 +223,17 @@ impl MinefieldRendererTextures {
         let tile_danger_1 = texture_creator
             .create_texture_from_surface(&tile_surface_1)
             .map_err(|e| e.to_string())?;
+        let tile_surface_2 = font
+            .render("2")
+            .blended(Color::RGB(0, 0, 0))
+            .map_err(|e| e.to_string())?;
+        let tile_danger_2 = texture_creator
+            .create_texture_from_surface(&tile_surface_2)
+            .map_err(|e| e.to_string())?;
 
-        Ok(MinefieldRendererTextures { tile_danger_1 })
+        Ok(MinefieldRendererTextures {
+            tile_danger_1,
+            tile_danger_2,
+        })
     }
 }
