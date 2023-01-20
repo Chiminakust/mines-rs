@@ -39,8 +39,7 @@ pub fn run(config: Config) -> Result<(), String> {
     let minefield_renderer = MinefieldRenderer::new(&canvas, &ttf_context, &minefield).unwrap();
     // need to create a texture for the font
 
-    canvas.set_draw_color(Color::RGB(255, 0, 0));
-    canvas.clear();
+    minefield_renderer.clear_background(&mut canvas);
 
     canvas.present();
 
@@ -61,35 +60,29 @@ pub fn run(config: Config) -> Result<(), String> {
                     mouse_btn,
                     clicks,
                     ..
-                } => match mouse_btn {
-                    MouseButton::Left => {
-                        let point = Point::new(x, y);
-                        println!(
-                            "x,y = {},{}, button = left, clicks = {}",
-                            point.x, point.y, clicks
-                        )
+                } => {
+                    let point = Point::new(x, y);
+                    if let Some(clicked_tile) = minefield_renderer.get_tile_index(point) {
+                        match mouse_btn {
+                            MouseButton::Left => {
+                                minefield.uncover_tile(clicked_tile);
+                            }
+                            MouseButton::Right => {
+                                minefield.flag_tile(clicked_tile);
+                            }
+                            _ => {}
+                        }
                     }
-                    MouseButton::Right => {
-                        let point = Point::new(x, y);
-                        println!(
-                            "x,y = {},{}, button = right, clicks = {}",
-                            point.x, point.y, clicks
-                        )
-                    }
-                    _ => {}
                 },
                 _ => {}
             }
         }
 
-        // clear screen
-        canvas.set_draw_color(Color::RGB(255, 0, 0));
-        canvas.clear();
-
-        // draw tiles of minefield
+        // draw on canvas
+        minefield_renderer.clear_background(&mut canvas);
         minefield_renderer.draw_tiles(&mut canvas);
 
-        // display canvas
+        // refresh displayed canvas
         canvas.present();
 
         // frame rate limit
@@ -122,6 +115,19 @@ impl Minefield {
         ];
 
         Minefield { tiles, rows, cols }
+    }
+
+    pub fn uncover_tile(&self, tile_number: u32) {
+        let row = tile_number % self.rows;
+        let col = tile_number / self.rows;
+        println!("uncovering tile {},{}", row, col);
+    }
+
+    pub fn flag_tile(&self, tile_number: u32) {
+        let row = tile_number % self.rows;
+        let col = tile_number / self.rows;
+        println!("flagging tile {},{}", row, col);
+
     }
 }
 
@@ -192,7 +198,7 @@ impl MinefieldRenderer {
     }
 
     pub fn draw_tiles(&self, canvas: &mut Canvas<Window>) -> Result<(), Box<dyn Error>> {
-        canvas.set_draw_color(Color::RGB(0, 255, 255));
+        canvas.set_draw_color(Color::RGB(230, 230, 230));
 
         for draw_zone in self.tiles_coords.iter() {
             canvas.fill_rect(*draw_zone).unwrap();
@@ -200,6 +206,20 @@ impl MinefieldRenderer {
         }
 
         Ok(())
+    }
+
+    pub fn clear_background(&self, canvas: &mut Canvas<Window>) {
+        canvas.set_draw_color(Color::RGB(50, 50, 50));
+        canvas.clear();
+    }
+
+    pub fn get_tile_index(&self, point: Point) -> Option<u32> {
+        for (i, draw_zone) in self.tiles_coords.iter().enumerate() {
+            if draw_zone.contains_point(point) {
+                return Some(i as u32);
+            }
+        }
+        None
     }
 }
 
