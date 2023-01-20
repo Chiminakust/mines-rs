@@ -21,7 +21,7 @@ pub fn run(config: Config) -> Result<(), String> {
 
     let minefield = Minefield::new(config.rows, config.cols);
 
-    let win_width: u32 = 800;
+    let win_width: u32 = config.cols * 27; // arbitrary
     let win_height: u32 = (win_width / config.cols) * config.rows;
 
     let sdl_context = sdl2::init()?;
@@ -164,10 +164,10 @@ impl MinefieldRenderer {
         let tiles_coords = (0..(rows * cols))
             .map(|x: u32| {
                 Rect::new(
-                    (origin.0 + ((x / cols) * (tile_size.0 + 5)))
+                    (origin.0 + ((x / rows) * (tile_size.0 + 5)))
                         .try_into()
                         .unwrap(),
-                    (origin.1 + ((x % cols) * (tile_size.1 + 5)))
+                    (origin.1 + ((x % rows) * (tile_size.1 + 5)))
                         .try_into()
                         .unwrap(),
                     tile_size.0.try_into().unwrap(),
@@ -194,9 +194,7 @@ impl MinefieldRenderer {
     pub fn draw_tiles(&self, canvas: &mut Canvas<Window>) -> Result<(), Box<dyn Error>> {
         canvas.set_draw_color(Color::RGB(0, 255, 255));
 
-        println!("drawing tiles");
         for draw_zone in self.tiles_coords.iter() {
-            println!("drawing in {}, {}", draw_zone.x, draw_zone.y);
             canvas.fill_rect(*draw_zone).unwrap();
             canvas.copy(&self.textures.tile_danger_1, None, Some(*draw_zone))?;
         }
