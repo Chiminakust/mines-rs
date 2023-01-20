@@ -9,6 +9,7 @@ use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::ttf;
 use sdl2::video::{Window, WindowContext};
 
+use rand::seq::IteratorRandom;
 use std::error::Error;
 use std::time::Duration;
 
@@ -17,9 +18,12 @@ mod config;
 pub use crate::config::Config;
 
 pub fn run(config: Config) -> Result<(), String> {
-    println!("Game with {} x {}", config.rows, config.cols);
+    println!(
+        "Game with {} x {}, {}% mines",
+        config.rows, config.cols, config.mines_percent
+    );
 
-    let minefield = Minefield::new(config.rows, config.cols);
+    let minefield = Minefield::new(config.rows, config.cols, config.mines_percent);
 
     let win_width: u32 = config.cols as u32 * 27; // arbitrary
     let win_height: u32 = (win_width / config.cols as u32) * config.rows as u32;
@@ -55,11 +59,7 @@ pub fn run(config: Config) -> Result<(), String> {
                     ..
                 } => break 'running,
                 Event::MouseButtonDown {
-                    x,
-                    y,
-                    mouse_btn,
-                    clicks,
-                    ..
+                    x, y, mouse_btn, ..
                 } => {
                     let point = Point::new(x, y);
                     if let Some(clicked_tile) = minefield_renderer.get_tile_index(point) {
@@ -73,14 +73,14 @@ pub fn run(config: Config) -> Result<(), String> {
                             _ => {}
                         }
                     }
-                },
+                }
                 _ => {}
             }
         }
 
         // draw on canvas
         minefield_renderer.clear_background(&mut canvas);
-        minefield_renderer.draw_tiles(&mut canvas);
+        minefield_renderer.draw_tiles(&mut canvas, &minefield);
 
         // refresh displayed canvas
         canvas.present();
@@ -101,18 +101,68 @@ struct Minefield {
 }
 
 impl Minefield {
-    pub fn new(rows: usize, cols: usize) -> Minefield {
-        let tiles = vec![
+    pub fn new(rows: usize, cols: usize, mines_percent: f32) -> Minefield {
+        let mut tiles = vec![
             vec![
                 Tile {
                     hidden: true,
-                    content: TileContent::Blank,
+                    content: TileContent::Danger(0),
                     flag: None
                 };
                 cols.try_into().unwrap()
             ];
             rows.try_into().unwrap()
         ];
+
+        // place mines
+        let n: usize = ((rows * cols) as f32 * (mines_percent / 100.0)) as usize;
+        for i in (0..(rows * cols))
+            .choose_multiple(&mut rand::thread_rng(), n)
+            .iter()
+        {
+            let row = *i % rows;
+            let col = *i / rows;
+            tiles[row][col].set_as_mine();
+        }
+
+        // compute danger indicators of tiles
+        for i in 0..(rows * cols) {
+            let row = i % rows;
+            let col = i / rows;
+
+            // skip if mine
+            if tiles[row][col].content == TileContent::Mine {
+                continue;
+            }
+
+            // TODO: there has to be a better way, but this works for now
+            // check the 8 neighbours
+            let mut danger_level = 0;
+            for j in -1..=1 {
+                for k in -1..=1 {
+                    // do not include current tile
+                    if (j, k) == (0, 0) {
+                        continue;
+                    }
+
+                    // check boundaries
+                    let x = row as i32 + j;
+                    let y = col as i32 + k;
+                    if 0 > x || x >= rows as i32 {
+                        continue;
+                    }
+                    if 0 > y || y >= cols as i32 {
+                        continue
+                    }
+
+                    if tiles[x as usize][y as usize].content == TileContent::Mine {
+                        danger_level += 1;
+                    }
+                }
+            }
+
+            tiles[row][col].set_danger_level(danger_level);
+        }
 
         Minefield { tiles, rows, cols }
     }
@@ -125,14 +175,22 @@ impl Minefield {
 
     pub fn uncover_tile(&self, tile_number: usize) {
         let (row, col) = self.tile_to_indices(tile_number);
-        println!("uncovering tile {},{}", row, col);
         self.tiles[row][col].uncover();
     }
 
     pub fn flag_tile(&self, tile_number: usize) {
         let (row, col) = self.tile_to_indices(tile_number);
-        println!("flagging tile {},{}", row, col);
-        self.tiles[row as usize][col as usize].flag();
+        self.tiles[row][col].flag();
+    }
+
+    pub fn get_tile_content(&self, tile_number: usize) -> TileContent {
+        let (row, col) = self.tile_to_indices(tile_number);
+        self.tiles[row][col].content.clone()
+    }
+
+    pub fn place_mine_on_tile(&mut self, tile_number: usize) {
+        let (row, col) = self.tile_to_indices(tile_number);
+        self.tiles[row][col].set_as_mine();
     }
 }
 
@@ -143,14 +201,13 @@ struct Tile {
     flag: Option<Flag>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 enum TileContent {
-    Blank,
     Mine,
     Danger(i32),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Flag {
     Mine,
     Question,
@@ -158,11 +215,19 @@ enum Flag {
 
 impl Tile {
     pub fn uncover(&self) {
-        println!("i am uncovered");
+        println!("i am uncovered, {:?}", self.content);
     }
 
     pub fn flag(&self) {
-        println!("i am flagged");
+        println!("i am flagged, {:?}", self.content);
+    }
+
+    pub fn set_as_mine(&mut self) {
+        self.content = TileContent::Mine;
+    }
+
+    pub fn set_danger_level(&mut self, danger_level: i32) {
+        self.content = TileContent::Danger(danger_level);
     }
 }
 
@@ -212,12 +277,34 @@ impl MinefieldRenderer {
         })
     }
 
-    pub fn draw_tiles(&self, canvas: &mut Canvas<Window>) -> Result<(), Box<dyn Error>> {
+    pub fn draw_tiles(
+        &self,
+        canvas: &mut Canvas<Window>,
+        minefield: &Minefield,
+    ) -> Result<(), Box<dyn Error>> {
         canvas.set_draw_color(Color::RGB(230, 230, 230));
 
-        for draw_zone in self.tiles_coords.iter() {
+        for (i, draw_zone) in self.tiles_coords.iter().enumerate() {
             canvas.fill_rect(*draw_zone).unwrap();
-            canvas.copy(&self.textures.tile_danger_1, None, Some(*draw_zone))?;
+
+
+            match minefield.get_tile_content(i) {
+                TileContent::Danger(i) => match i {
+                    0 => canvas.copy(&self.textures.tile_danger_0, None, Some(*draw_zone))?,
+                    1 => canvas.copy(&self.textures.tile_danger_1, None, Some(*draw_zone))?,
+                    2 => canvas.copy(&self.textures.tile_danger_2, None, Some(*draw_zone))?,
+                    3 => canvas.copy(&self.textures.tile_danger_3, None, Some(*draw_zone))?,
+                    4 => canvas.copy(&self.textures.tile_danger_4, None, Some(*draw_zone))?,
+                    5 => canvas.copy(&self.textures.tile_danger_5, None, Some(*draw_zone))?,
+                    6 => canvas.copy(&self.textures.tile_danger_6, None, Some(*draw_zone))?,
+                    7 => canvas.copy(&self.textures.tile_danger_7, None, Some(*draw_zone))?,
+                    8 => canvas.copy(&self.textures.tile_danger_8, None, Some(*draw_zone))?,
+                    _ => (),
+                },
+                TileContent::Mine => {
+                    canvas.copy(&self.textures.tile_mine, None, Some(*draw_zone))?;
+                }
+            }
         }
 
         Ok(())
@@ -239,8 +326,19 @@ impl MinefieldRenderer {
 }
 
 struct MinefieldRendererTextures {
+    tile_danger_0: Texture,
     tile_danger_1: Texture,
     tile_danger_2: Texture,
+    tile_danger_3: Texture,
+    tile_danger_4: Texture,
+    tile_danger_5: Texture,
+    tile_danger_6: Texture,
+    tile_danger_7: Texture,
+    tile_danger_8: Texture,
+    tile_flag_mine: Texture,
+    tile_flag_question: Texture,
+    tile_mine: Texture,
+    tile_blank: Texture,
 }
 
 impl MinefieldRendererTextures {
@@ -248,26 +346,124 @@ impl MinefieldRendererTextures {
         font: ttf::Font,
         texture_creator: &TextureCreator<WindowContext>,
     ) -> Result<MinefieldRendererTextures, Box<dyn Error>> {
-
-        let tile_surface_1 = font
-            .render("1")
-            .blended(Color::RGB(0, 0, 0))
+        let tile_danger_0 = texture_creator
+            .create_texture_from_surface(
+                font.render("0")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
             .map_err(|e| e.to_string())?;
+
         let tile_danger_1 = texture_creator
-            .create_texture_from_surface(&tile_surface_1)
+            .create_texture_from_surface(
+                font.render("1")
+                    .blended(Color::RGB(0, 200, 0))
+                    .map_err(|e| e.to_string())?,
+            )
             .map_err(|e| e.to_string())?;
 
-        let tile_surface_2 = font
-            .render("2")
-            .blended(Color::RGB(0, 0, 0))
-            .map_err(|e| e.to_string())?;
         let tile_danger_2 = texture_creator
-            .create_texture_from_surface(&tile_surface_2)
+            .create_texture_from_surface(
+                font.render("2")
+                    .blended(Color::RGB(0, 200, 200))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_danger_3 = texture_creator
+            .create_texture_from_surface(
+                font.render("3")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_danger_4 = texture_creator
+            .create_texture_from_surface(
+                font.render("4")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_danger_5 = texture_creator
+            .create_texture_from_surface(
+                font.render("5")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_danger_6 = texture_creator
+            .create_texture_from_surface(
+                font.render("6")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_danger_7 = texture_creator
+            .create_texture_from_surface(
+                font.render("7")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_danger_8 = texture_creator
+            .create_texture_from_surface(
+                font.render("8")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_flag_mine = texture_creator
+            .create_texture_from_surface(
+                font.render("F")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_flag_question = texture_creator
+            .create_texture_from_surface(
+                font.render("?")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_mine = texture_creator
+            .create_texture_from_surface(
+                font.render("*")
+                    .blended(Color::RGB(255, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+
+        let tile_blank = texture_creator
+            .create_texture_from_surface(
+                font.render(" ")
+                    .blended(Color::RGB(0, 0, 0))
+                    .map_err(|e| e.to_string())?,
+            )
             .map_err(|e| e.to_string())?;
 
         Ok(MinefieldRendererTextures {
+            tile_danger_0,
             tile_danger_1,
             tile_danger_2,
+            tile_danger_3,
+            tile_danger_4,
+            tile_danger_5,
+            tile_danger_6,
+            tile_danger_7,
+            tile_danger_8,
+            tile_flag_mine,
+            tile_flag_question,
+            tile_mine,
+            tile_blank,
         })
     }
 }
