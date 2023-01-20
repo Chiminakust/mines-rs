@@ -3,14 +3,14 @@ extern crate argparse;
 use argparse::{ArgumentParser, Store};
 
 pub struct Config {
-    pub rows: u32,
-    pub cols: u32,
+    pub rows: usize,
+    pub cols: usize,
 }
 
 impl Config {
     pub fn build() -> Config {
-        let mut rows = 16;
-        let mut cols = 30;
+        let mut rows: usize = 16;
+        let mut cols: usize = 30;
 
         {
             let mut ap = ArgumentParser::new();

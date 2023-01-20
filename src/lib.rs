@@ -21,8 +21,8 @@ pub fn run(config: Config) -> Result<(), String> {
 
     let minefield = Minefield::new(config.rows, config.cols);
 
-    let win_width: u32 = config.cols * 27; // arbitrary
-    let win_height: u32 = (win_width / config.cols) * config.rows;
+    let win_width: u32 = config.cols as u32 * 27; // arbitrary
+    let win_height: u32 = (win_width / config.cols as u32) * config.rows as u32;
 
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
@@ -96,12 +96,12 @@ pub fn run(config: Config) -> Result<(), String> {
 
 struct Minefield {
     tiles: Vec<Vec<Tile>>,
-    rows: u32,
-    cols: u32,
+    rows: usize,
+    cols: usize,
 }
 
 impl Minefield {
-    pub fn new(rows: u32, cols: u32) -> Minefield {
+    pub fn new(rows: usize, cols: usize) -> Minefield {
         let tiles = vec![
             vec![
                 Tile {
@@ -117,17 +117,22 @@ impl Minefield {
         Minefield { tiles, rows, cols }
     }
 
-    pub fn uncover_tile(&self, tile_number: u32) {
+    fn tile_to_indices(&self, tile_number: usize) -> (usize, usize) {
         let row = tile_number % self.rows;
         let col = tile_number / self.rows;
-        println!("uncovering tile {},{}", row, col);
+        (row, col)
     }
 
-    pub fn flag_tile(&self, tile_number: u32) {
-        let row = tile_number % self.rows;
-        let col = tile_number / self.rows;
-        println!("flagging tile {},{}", row, col);
+    pub fn uncover_tile(&self, tile_number: usize) {
+        let (row, col) = self.tile_to_indices(tile_number);
+        println!("uncovering tile {},{}", row, col);
+        self.tiles[row][col].uncover();
+    }
 
+    pub fn flag_tile(&self, tile_number: usize) {
+        let (row, col) = self.tile_to_indices(tile_number);
+        println!("flagging tile {},{}", row, col);
+        self.tiles[row as usize][col as usize].flag();
     }
 }
 
@@ -151,6 +156,16 @@ enum Flag {
     Question,
 }
 
+impl Tile {
+    pub fn uncover(&self) {
+        println!("i am uncovered");
+    }
+
+    pub fn flag(&self) {
+        println!("i am flagged");
+    }
+}
+
 struct MinefieldRenderer {
     tiles_coords: Vec<Rect>,
     textures: MinefieldRendererTextures,
@@ -168,12 +183,12 @@ impl MinefieldRenderer {
         let origin = (10, 10);
         let tile_size = (20, 20);
         let tiles_coords = (0..(rows * cols))
-            .map(|x: u32| {
+            .map(|x: usize| {
                 Rect::new(
-                    (origin.0 + ((x / rows) * (tile_size.0 + 5)))
+                    (origin.0 + ((x / rows) * (tile_size.0 + 2)))
                         .try_into()
                         .unwrap(),
-                    (origin.1 + ((x % rows) * (tile_size.1 + 5)))
+                    (origin.1 + ((x % rows) * (tile_size.1 + 2)))
                         .try_into()
                         .unwrap(),
                     tile_size.0.try_into().unwrap(),
@@ -213,10 +228,10 @@ impl MinefieldRenderer {
         canvas.clear();
     }
 
-    pub fn get_tile_index(&self, point: Point) -> Option<u32> {
+    pub fn get_tile_index(&self, point: Point) -> Option<usize> {
         for (i, draw_zone) in self.tiles_coords.iter().enumerate() {
             if draw_zone.contains_point(point) {
-                return Some(i as u32);
+                return Some(i);
             }
         }
         None
@@ -241,6 +256,7 @@ impl MinefieldRendererTextures {
         let tile_danger_1 = texture_creator
             .create_texture_from_surface(&tile_surface_1)
             .map_err(|e| e.to_string())?;
+
         let tile_surface_2 = font
             .render("2")
             .blended(Color::RGB(0, 0, 0))
