@@ -25,7 +25,6 @@ pub fn run(config: Config) -> Result<(), String> {
 
     let mut minefield = Minefield::new(config.rows, config.cols, config.mines_percent);
 
-
     let origin = (5 * config.tile_gap, 5 * config.tile_gap);
     let win_width = ((config.tile_width + config.tile_gap) * config.cols) + 2 * origin.0;
     let win_height = ((config.tile_height + config.tile_gap) * config.rows) + 2 * origin.1;
@@ -292,7 +291,7 @@ impl Minefield {
                 Flag::Mine => {
                     new_flag = Some(Flag::Question);
                     self.mine_flag_counter -= 1;
-                },
+                }
                 Flag::Question => new_flag = None,
             }
         } else {
@@ -305,7 +304,11 @@ impl Minefield {
             }
         }
         self.tiles[row][col].set_flag(new_flag);
-        println!("mines: {} / {}", self.mine_flag_counter, self.mine_locations.len());
+        println!(
+            "mines: {} / {}",
+            self.mine_flag_counter,
+            self.mine_locations.len()
+        );
     }
 
     pub fn get_tile_content(&self, tile_number: usize) -> TileContent {
@@ -340,8 +343,10 @@ impl Minefield {
         for mine_index in self.mine_locations.iter() {
             if let Some(flag) = self.get_tile_flag(*mine_index) {
                 match flag {
-                    Flag::Mine => {}, // good, need all the others
-                    _ => { return false; } // only mine flags count
+                    Flag::Mine => {} // good, need all the others
+                    _ => {
+                        return false;
+                    } // only mine flags count
                 }
             } else {
                 // no flag on mine: no win

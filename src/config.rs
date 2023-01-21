@@ -34,10 +34,16 @@ impl Config {
             );
             ap.refer(&mut tile_width)
                 .add_option(&["-w", "--tile-width"], Store, "Width of a tile");
-            ap.refer(&mut tile_height)
-                .add_option(&["-h", "--tile-height"], Store, "Height of a tile");
-            ap.refer(&mut tile_gap)
-                .add_option(&["-g", "--tile-gap"], Store, "Gap in pixels between tiles");
+            ap.refer(&mut tile_height).add_option(
+                &["-h", "--tile-height"],
+                Store,
+                "Height of a tile",
+            );
+            ap.refer(&mut tile_gap).add_option(
+                &["-g", "--tile-gap"],
+                Store,
+                "Gap in pixels between tiles",
+            );
             ap.parse_args_or_exit();
         }
 
