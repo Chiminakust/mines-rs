@@ -226,11 +226,11 @@ impl Minefield {
             TileContent::Mine => {
                 println!("BOOM from mine {},{}", row, col);
                 self.reveal();
-            },
+            }
             TileContent::Danger(0) => {
                 self.discover(tile_number);
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
