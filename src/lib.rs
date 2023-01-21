@@ -242,7 +242,12 @@ impl Minefield {
 
     pub fn uncover_tile(&mut self, tile_number: usize) {
         let (row, col) = self.tile_to_indices(tile_number);
-        self.tiles[row][col].uncover();
+        let was_hidden = self.tile_is_hidden(tile_number);
+
+        if was_hidden {
+            self.tiles[row][col].uncover();
+        }
+
         match self.get_tile_content(tile_number) {
             TileContent::Mine => {
                 println!("BOOM from mine {},{}", row, col);
@@ -250,6 +255,11 @@ impl Minefield {
             }
             TileContent::Danger(0) => {
                 self.discover(tile_number);
+            }
+            TileContent::Danger(i) => {
+                if !was_hidden {
+                    self.auto_search_around(tile_number, i);
+                }
             }
             _ => {}
         }
@@ -336,6 +346,33 @@ impl Minefield {
             }
 
             self.uncover_tile(neighbour_index);
+        }
+    }
+
+    fn auto_search_around(&mut self, tile_number: usize, danger_level: i32) {
+        // TODO: optimize this
+        let mut local_mine_flag_count = 0;
+        for (x, y) in self.get_neighbours(tile_number).iter() {
+            if let Some(Flag::Mine) = self.tiles[*x][*y].flag.clone() {
+                local_mine_flag_count += 1;
+            }
+        }
+
+        // only an exact match will make it auto search
+        if danger_level != local_mine_flag_count {
+            return;
+        }
+
+        // uncover neighbours
+        for (x, y) in self.get_neighbours(tile_number).iter() {
+            let neighbour_index = self.indices_to_tile(*x, *y);
+            if !self.tile_is_hidden(neighbour_index) {
+                continue;
+            }
+            if let Some(flag) = self.tiles[*x][*y].flag.clone() {
+            } else {
+                self.uncover_tile(neighbour_index);
+            }
         }
     }
 
@@ -473,7 +510,7 @@ impl MinefieldRenderer {
         canvas: &mut Canvas<Window>,
         minefield: &Minefield,
     ) -> Result<(), Box<dyn Error>> {
-        canvas.set_draw_color(Color::RGB(230, 230, 230));
+        canvas.set_draw_color(Color::RGB(240, 240, 240));
 
         for (i, draw_zone) in self.tiles_coords.iter().enumerate() {
             canvas.fill_rect(*draw_zone).unwrap();
@@ -556,7 +593,7 @@ impl MinefieldRendererTextures {
         let tile_danger_0 = texture_creator
             .create_texture_from_surface(
                 font.render("0")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(200, 200, 200))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -564,7 +601,7 @@ impl MinefieldRendererTextures {
         let tile_danger_1 = texture_creator
             .create_texture_from_surface(
                 font.render("1")
-                    .blended(Color::RGB(0, 200, 0))
+                    .blended(Color::RGB(74, 200, 37))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -572,7 +609,7 @@ impl MinefieldRendererTextures {
         let tile_danger_2 = texture_creator
             .create_texture_from_surface(
                 font.render("2")
-                    .blended(Color::RGB(0, 200, 200))
+                    .blended(Color::RGB(226, 200, 0))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -580,7 +617,7 @@ impl MinefieldRendererTextures {
         let tile_danger_3 = texture_creator
             .create_texture_from_surface(
                 font.render("3")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(255, 200, 0))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -588,7 +625,7 @@ impl MinefieldRendererTextures {
         let tile_danger_4 = texture_creator
             .create_texture_from_surface(
                 font.render("4")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(255, 151, 0))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -596,7 +633,7 @@ impl MinefieldRendererTextures {
         let tile_danger_5 = texture_creator
             .create_texture_from_surface(
                 font.render("5")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(234, 39, 144))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -604,7 +641,7 @@ impl MinefieldRendererTextures {
         let tile_danger_6 = texture_creator
             .create_texture_from_surface(
                 font.render("6")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(230, 120, 91))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -612,7 +649,7 @@ impl MinefieldRendererTextures {
         let tile_danger_7 = texture_creator
             .create_texture_from_surface(
                 font.render("7")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(205, 50, 72))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -620,7 +657,7 @@ impl MinefieldRendererTextures {
         let tile_danger_8 = texture_creator
             .create_texture_from_surface(
                 font.render("8")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(202, 0, 0))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -636,7 +673,7 @@ impl MinefieldRendererTextures {
         let tile_flag_question = texture_creator
             .create_texture_from_surface(
                 font.render("?")
-                    .blended(Color::RGB(0, 0, 0))
+                    .blended(Color::RGB(50, 50, 50))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
@@ -644,7 +681,7 @@ impl MinefieldRendererTextures {
         let tile_mine = texture_creator
             .create_texture_from_surface(
                 font.render("*")
-                    .blended(Color::RGB(255, 0, 0))
+                    .blended(Color::RGB(222, 13, 13))
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
