@@ -9,7 +9,6 @@ pub struct Config {
     pub tile_width: usize,
     pub tile_height: usize,
     pub tile_gap: usize,
-    pub origin: (usize, usize),
 }
 
 impl Config {
@@ -17,6 +16,9 @@ impl Config {
         let mut rows: usize = 16;
         let mut cols: usize = 30;
         let mut mines_percent = 20.0;
+        let mut tile_width = 30;
+        let mut tile_height = 30;
+        let mut tile_gap = 2;
 
         {
             let mut ap = ArgumentParser::new();
@@ -30,6 +32,12 @@ impl Config {
                 Store,
                 "Percentage of mines",
             );
+            ap.refer(&mut tile_width)
+                .add_option(&["-w", "--tile-width"], Store, "Width of a tile");
+            ap.refer(&mut tile_height)
+                .add_option(&["-h", "--tile-height"], Store, "Height of a tile");
+            ap.refer(&mut tile_gap)
+                .add_option(&["-g", "--tile-gap"], Store, "Gap in pixels between tiles");
             ap.parse_args_or_exit();
         }
 
@@ -37,10 +45,9 @@ impl Config {
             rows,
             cols,
             mines_percent,
-            tile_width: 30,
-            tile_height: 30,
-            tile_gap: 2,
-            origin: (10, 10),
+            tile_width,
+            tile_height,
+            tile_gap,
         }
     }
 }

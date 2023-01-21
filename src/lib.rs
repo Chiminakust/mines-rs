@@ -25,8 +25,10 @@ pub fn run(config: Config) -> Result<(), String> {
 
     let mut minefield = Minefield::new(config.rows, config.cols, config.mines_percent);
 
-    let win_width = ((config.tile_width + config.tile_gap) * config.cols) + 2 * config.origin.0;
-    let win_height = ((config.tile_height + config.tile_gap) * config.rows) + 2 * config.origin.1;
+
+    let origin = (5 * config.tile_gap, 5 * config.tile_gap);
+    let win_width = ((config.tile_width + config.tile_gap) * config.cols) + 2 * origin.0;
+    let win_height = ((config.tile_height + config.tile_gap) * config.rows) + 2 * origin.1;
 
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
@@ -46,7 +48,7 @@ pub fn run(config: Config) -> Result<(), String> {
         &minefield,
         (config.tile_width, config.tile_height),
         config.tile_gap,
-        config.origin,
+        origin,
     )
     .unwrap();
 
