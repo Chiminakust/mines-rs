@@ -23,9 +23,9 @@ pub fn run(config: Config) -> Result<(), String> {
         config.rows, config.cols, config.mines_percent
     );
 
-    let minefield = Minefield::new(config.rows, config.cols, config.mines_percent);
+    let mut minefield = Minefield::new(config.rows, config.cols, config.mines_percent);
 
-    let win_width: u32 = config.cols as u32 * 27; // arbitrary
+    let win_width: u32 = config.cols as u32 * 33; // arbitrary
     let win_height: u32 = (win_width / config.cols as u32) * config.rows as u32;
 
     let sdl_context = sdl2::init()?;
@@ -74,6 +74,12 @@ pub fn run(config: Config) -> Result<(), String> {
                         }
                     }
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::R),
+                    ..
+                } => {
+                    minefield.reset();
+                }
                 _ => {}
             }
         }
@@ -98,6 +104,7 @@ struct Minefield {
     tiles: Vec<Vec<Tile>>,
     rows: usize,
     cols: usize,
+    mines_percent: f32,
 }
 
 impl Minefield {
@@ -114,57 +121,92 @@ impl Minefield {
             rows.try_into().unwrap()
         ];
 
+        let mut minefield = Minefield {
+            tiles,
+            rows,
+            cols,
+            mines_percent,
+        };
+
+        minefield.reset();
+
+        minefield
+    }
+
+    pub fn reveal(&mut self) {
+        for col in self.tiles.iter_mut() {
+            for tile in col.iter_mut() {
+                (*tile).uncover();
+            }
+        }
+    }
+
+    pub fn reset(&mut self) {
+        let total_tiles = self.rows * self.cols;
+
+        // reset all tiles
+        for i in 0..total_tiles {
+            self.reset_tile(i);
+        }
+
         // place mines
-        let n: usize = ((rows * cols) as f32 * (mines_percent / 100.0)) as usize;
-        for i in (0..(rows * cols))
+        let n: usize = (total_tiles as f32 * (self.mines_percent / 100.0)) as usize;
+        for i in (0..total_tiles)
             .choose_multiple(&mut rand::thread_rng(), n)
             .iter()
         {
-            let row = *i % rows;
-            let col = *i / rows;
-            tiles[row][col].set_as_mine();
+            let (row, col) = self.tile_to_indices(*i);
+            self.tiles[row][col].set_as_mine();
         }
 
         // compute danger indicators of tiles
-        for i in 0..(rows * cols) {
-            let row = i % rows;
-            let col = i / rows;
+        for i in 0..total_tiles {
+            let (row, col) = self.tile_to_indices(i);
 
-            // skip if mine
-            if tiles[row][col].content == TileContent::Mine {
+            // skip if tile is a mine
+            if self.tiles[row][col].content == TileContent::Mine {
                 continue;
             }
 
-            // TODO: there has to be a better way, but this works for now
-            // check the 8 neighbours
             let mut danger_level = 0;
-            for j in -1..=1 {
-                for k in -1..=1 {
-                    // do not include current tile
-                    if (j, k) == (0, 0) {
-                        continue;
-                    }
 
-                    // check boundaries
-                    let x = row as i32 + j;
-                    let y = col as i32 + k;
-                    if 0 > x || x >= rows as i32 {
-                        continue;
-                    }
-                    if 0 > y || y >= cols as i32 {
-                        continue
-                    }
-
-                    if tiles[x as usize][y as usize].content == TileContent::Mine {
-                        danger_level += 1;
-                    }
+            for (x, y) in self.get_neighbours(i).iter() {
+                if self.tiles[*x][*y].content == TileContent::Mine {
+                    danger_level += 1;
                 }
             }
 
-            tiles[row][col].set_danger_level(danger_level);
+            self.tiles[row][col].set_danger_level(danger_level);
+        }
+    }
+
+    fn get_neighbours(&self, tile_number: usize) -> Vec<(usize, usize)> {
+        let (row, col) = self.tile_to_indices(tile_number);
+        let mut neighbours = vec![];
+
+        // TODO: there has to be a better way, but this works for now
+        for j in -1..=1 {
+            for k in -1..=1 {
+                // do not include current tile
+                if (j, k) == (0, 0) {
+                    continue;
+                }
+
+                // check boundaries
+                let x = row as i32 + j;
+                let y = col as i32 + k;
+                if 0 > x || x >= self.rows as i32 {
+                    continue;
+                }
+                if 0 > y || y >= self.cols as i32 {
+                    continue;
+                }
+
+                neighbours.push((x as usize, y as usize));
+            }
         }
 
-        Minefield { tiles, rows, cols }
+        neighbours
     }
 
     fn tile_to_indices(&self, tile_number: usize) -> (usize, usize) {
@@ -173,12 +215,36 @@ impl Minefield {
         (row, col)
     }
 
-    pub fn uncover_tile(&self, tile_number: usize) {
-        let (row, col) = self.tile_to_indices(tile_number);
-        self.tiles[row][col].uncover();
+    fn indices_to_tile(&self, row: usize, col: usize) -> usize {
+        col * self.rows + row
     }
 
-    pub fn flag_tile(&self, tile_number: usize) {
+    pub fn uncover_tile(&mut self, tile_number: usize) {
+        let (row, col) = self.tile_to_indices(tile_number);
+        self.tiles[row][col].uncover();
+        match self.get_tile_content(tile_number) {
+            TileContent::Mine => {
+                println!("BOOM from mine {},{}", row, col);
+                self.reveal();
+            },
+            TileContent::Danger(0) => {
+                self.discover(tile_number);
+            },
+            _ => {},
+        }
+    }
+
+    pub fn hide_tile(&mut self, tile_number: usize) {
+        let (row, col) = self.tile_to_indices(tile_number);
+        self.tiles[row][col].hide();
+    }
+
+    pub fn reset_tile(&mut self, tile_number: usize) {
+        let (row, col) = self.tile_to_indices(tile_number);
+        self.tiles[row][col].reset();
+    }
+
+    pub fn flag_tile(&mut self, tile_number: usize) {
         let (row, col) = self.tile_to_indices(tile_number);
         self.tiles[row][col].flag();
     }
@@ -188,9 +254,27 @@ impl Minefield {
         self.tiles[row][col].content.clone()
     }
 
-    pub fn place_mine_on_tile(&mut self, tile_number: usize) {
+    pub fn get_tile_flag(&self, tile_number: usize) -> Option<Flag> {
         let (row, col) = self.tile_to_indices(tile_number);
-        self.tiles[row][col].set_as_mine();
+        self.tiles[row][col].flag.clone()
+    }
+
+    pub fn tile_is_hidden(&self, tile_number: usize) -> bool {
+        let (row, col) = self.tile_to_indices(tile_number);
+        self.tiles[row][col].hidden
+    }
+
+    fn discover(&mut self, tile_number: usize) {
+        for (x, y) in self.get_neighbours(tile_number).iter() {
+            let neighbour_index = self.indices_to_tile(*x, *y);
+
+            // skip if already revealed
+            if !self.tile_is_hidden(neighbour_index) {
+                continue;
+            }
+
+            self.uncover_tile(neighbour_index);
+        }
     }
 }
 
@@ -214,12 +298,29 @@ enum Flag {
 }
 
 impl Tile {
-    pub fn uncover(&self) {
-        println!("i am uncovered, {:?}", self.content);
+    pub fn uncover(&mut self) {
+        // println!("i am uncovered, {:?} {:?}", self.content, self.flag);
+        self.hidden = false;
     }
 
-    pub fn flag(&self) {
-        println!("i am flagged, {:?}", self.content);
+    pub fn hide(&mut self) {
+        self.hidden = true;
+    }
+
+    pub fn flag(&mut self) {
+        // println!("i am flagged, {:?}, {:?}", self.content, self.flag);
+        if let Some(flag) = self.flag.clone() {
+            match flag {
+                Flag::Mine => self.flag = Some(Flag::Question),
+                Flag::Question => self.flag = None,
+            }
+        } else {
+            self.flag = Some(Flag::Mine);
+        }
+    }
+
+    fn reset_flag(&mut self) {
+        self.flag = None;
     }
 
     pub fn set_as_mine(&mut self) {
@@ -228,6 +329,12 @@ impl Tile {
 
     pub fn set_danger_level(&mut self, danger_level: i32) {
         self.content = TileContent::Danger(danger_level);
+    }
+
+    pub fn reset(&mut self) {
+        self.hide();
+        self.set_danger_level(0);
+        self.reset_flag();
     }
 }
 
@@ -246,7 +353,7 @@ impl MinefieldRenderer {
         let rows = minefield.rows;
         let cols = minefield.cols;
         let origin = (10, 10);
-        let tile_size = (20, 20);
+        let tile_size = (30, 30);
         let tiles_coords = (0..(rows * cols))
             .map(|x: usize| {
                 Rect::new(
@@ -287,22 +394,38 @@ impl MinefieldRenderer {
         for (i, draw_zone) in self.tiles_coords.iter().enumerate() {
             canvas.fill_rect(*draw_zone).unwrap();
 
-
-            match minefield.get_tile_content(i) {
-                TileContent::Danger(i) => match i {
-                    0 => canvas.copy(&self.textures.tile_danger_0, None, Some(*draw_zone))?,
-                    1 => canvas.copy(&self.textures.tile_danger_1, None, Some(*draw_zone))?,
-                    2 => canvas.copy(&self.textures.tile_danger_2, None, Some(*draw_zone))?,
-                    3 => canvas.copy(&self.textures.tile_danger_3, None, Some(*draw_zone))?,
-                    4 => canvas.copy(&self.textures.tile_danger_4, None, Some(*draw_zone))?,
-                    5 => canvas.copy(&self.textures.tile_danger_5, None, Some(*draw_zone))?,
-                    6 => canvas.copy(&self.textures.tile_danger_6, None, Some(*draw_zone))?,
-                    7 => canvas.copy(&self.textures.tile_danger_7, None, Some(*draw_zone))?,
-                    8 => canvas.copy(&self.textures.tile_danger_8, None, Some(*draw_zone))?,
-                    _ => (),
-                },
-                TileContent::Mine => {
-                    canvas.copy(&self.textures.tile_mine, None, Some(*draw_zone))?;
+            if minefield.tile_is_hidden(i) {
+                if let Some(flag) = minefield.get_tile_flag(i) {
+                    match flag {
+                        Flag::Mine => {
+                            canvas.copy(&self.textures.tile_flag_mine, None, Some(*draw_zone))?
+                        }
+                        Flag::Question => canvas.copy(
+                            &self.textures.tile_flag_question,
+                            None,
+                            Some(*draw_zone),
+                        )?,
+                    }
+                } else {
+                    canvas.copy(&self.textures.tile_blank, None, Some(*draw_zone))?;
+                }
+            } else {
+                match minefield.get_tile_content(i) {
+                    TileContent::Danger(i) => match i {
+                        0 => canvas.copy(&self.textures.tile_danger_0, None, Some(*draw_zone))?,
+                        1 => canvas.copy(&self.textures.tile_danger_1, None, Some(*draw_zone))?,
+                        2 => canvas.copy(&self.textures.tile_danger_2, None, Some(*draw_zone))?,
+                        3 => canvas.copy(&self.textures.tile_danger_3, None, Some(*draw_zone))?,
+                        4 => canvas.copy(&self.textures.tile_danger_4, None, Some(*draw_zone))?,
+                        5 => canvas.copy(&self.textures.tile_danger_5, None, Some(*draw_zone))?,
+                        6 => canvas.copy(&self.textures.tile_danger_6, None, Some(*draw_zone))?,
+                        7 => canvas.copy(&self.textures.tile_danger_7, None, Some(*draw_zone))?,
+                        8 => canvas.copy(&self.textures.tile_danger_8, None, Some(*draw_zone))?,
+                        _ => (),
+                    },
+                    TileContent::Mine => {
+                        canvas.copy(&self.textures.tile_mine, None, Some(*draw_zone))?;
+                    }
                 }
             }
         }
