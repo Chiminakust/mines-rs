@@ -6,6 +6,10 @@ pub struct Config {
     pub rows: usize,
     pub cols: usize,
     pub mines_percent: f32,
+    pub tile_width: usize,
+    pub tile_height: usize,
+    pub tile_gap: usize,
+    pub origin: (usize, usize),
 }
 
 impl Config {
@@ -33,6 +37,10 @@ impl Config {
             rows,
             cols,
             mines_percent,
+            tile_width: 30,
+            tile_height: 30,
+            tile_gap: 2,
+            origin: (10, 10),
         }
     }
 }

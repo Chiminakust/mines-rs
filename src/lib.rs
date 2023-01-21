@@ -25,26 +25,32 @@ pub fn run(config: Config) -> Result<(), String> {
 
     let mut minefield = Minefield::new(config.rows, config.cols, config.mines_percent);
 
-    let win_width: u32 = config.cols as u32 * 33; // arbitrary
-    let win_height: u32 = (win_width / config.cols as u32) * config.rows as u32;
+    let win_width = ((config.tile_width + config.tile_gap) * config.cols) + 2 * config.origin.0;
+    let win_height = ((config.tile_height + config.tile_gap) * config.rows) + 2 * config.origin.1;
 
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
 
     let window = video_subsystem
-        .window("rust-sdl2 demo: Video", win_width, win_height)
+        .window("rust-sdl2 demo: Video", win_width as u32, win_height as u32)
         .position_centered()
         .opengl()
         .build()
         .map_err(|e| e.to_string())?;
 
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    let minefield_renderer = MinefieldRenderer::new(&canvas, &ttf_context, &minefield).unwrap();
-    // need to create a texture for the font
+    let minefield_renderer = MinefieldRenderer::new(
+        &canvas,
+        &ttf_context,
+        &minefield,
+        (config.tile_width, config.tile_height),
+        config.tile_gap,
+        config.origin,
+    )
+    .unwrap();
 
     minefield_renderer.clear_background(&mut canvas);
-
     canvas.present();
 
     let mut event_pump = sdl_context.event_pump()?;
@@ -348,19 +354,20 @@ impl MinefieldRenderer {
         canvas: &Canvas<Window>,
         ttf_context: &ttf::Sdl2TtfContext,
         minefield: &Minefield,
+        tile_size: (usize, usize),
+        tile_gap: usize,
+        origin: (usize, usize),
     ) -> Result<MinefieldRenderer, Box<dyn Error>> {
         // compute where the tiles will be on the screen
         let rows = minefield.rows;
         let cols = minefield.cols;
-        let origin = (10, 10);
-        let tile_size = (30, 30);
         let tiles_coords = (0..(rows * cols))
             .map(|x: usize| {
                 Rect::new(
-                    (origin.0 + ((x / rows) * (tile_size.0 + 2)))
+                    (origin.0 + ((x / rows) * (tile_size.0 + tile_gap)))
                         .try_into()
                         .unwrap(),
-                    (origin.1 + ((x % rows) * (tile_size.1 + 2)))
+                    (origin.1 + ((x % rows) * (tile_size.1 + tile_gap)))
                         .try_into()
                         .unwrap(),
                     tile_size.0.try_into().unwrap(),
