@@ -57,6 +57,8 @@ pub fn run(config: Config) -> Result<(), String> {
 
     let mut event_pump = sdl_context.event_pump()?;
 
+    let mut game_won = false;
+
     'running: loop {
         // event loop
         for event in event_pump.poll_iter() {
@@ -86,10 +88,15 @@ pub fn run(config: Config) -> Result<(), String> {
                     keycode: Some(Keycode::R),
                     ..
                 } => {
+                    game_won = false;
                     minefield.reset();
                 }
                 _ => {}
             }
+        }
+
+        if game_won {
+            continue;
         }
 
         // draw on canvas
@@ -103,6 +110,10 @@ pub fn run(config: Config) -> Result<(), String> {
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
 
         // The rest of the game loop goes here...
+        if minefield.check_win() {
+            println!("WINNER WINNER");
+            game_won = true;
+        }
     }
 
     Ok(())
@@ -113,6 +124,8 @@ struct Minefield {
     rows: usize,
     cols: usize,
     mines_percent: f32,
+    mine_locations: Vec<usize>,
+    mine_flag_counter: u32,
 }
 
 impl Minefield {
@@ -134,6 +147,8 @@ impl Minefield {
             rows,
             cols,
             mines_percent,
+            mine_locations: vec![],
+            mine_flag_counter: 0,
         };
 
         minefield.reset();
@@ -151,6 +166,7 @@ impl Minefield {
 
     pub fn reset(&mut self) {
         let total_tiles = self.rows * self.cols;
+        self.mine_flag_counter = 0;
 
         // reset all tiles
         for i in 0..total_tiles {
@@ -159,10 +175,8 @@ impl Minefield {
 
         // place mines
         let n: usize = (total_tiles as f32 * (self.mines_percent / 100.0)) as usize;
-        for i in (0..total_tiles)
-            .choose_multiple(&mut rand::thread_rng(), n)
-            .iter()
-        {
+        self.mine_locations = (0..total_tiles).choose_multiple(&mut rand::thread_rng(), n);
+        for i in self.mine_locations.iter() {
             let (row, col) = self.tile_to_indices(*i);
             self.tiles[row][col].set_as_mine();
         }
@@ -240,6 +254,8 @@ impl Minefield {
             }
             _ => {}
         }
+
+        self.reset_tile_flag(tile_number);
     }
 
     pub fn hide_tile(&mut self, tile_number: usize) {
@@ -252,9 +268,44 @@ impl Minefield {
         self.tiles[row][col].reset();
     }
 
-    pub fn flag_tile(&mut self, tile_number: usize) {
+    fn reset_tile_flag(&mut self, tile_number: usize) {
         let (row, col) = self.tile_to_indices(tile_number);
-        self.tiles[row][col].flag();
+        if let Some(Flag::Mine) = self.get_tile_flag(tile_number) {
+            self.mine_flag_counter -= 1;
+        }
+        self.tiles[row][col].set_flag(None);
+    }
+
+    pub fn flag_tile(&mut self, tile_number: usize) {
+        // cannot flag revealed tiles
+        if !self.tile_is_hidden(tile_number) {
+            return;
+        }
+
+        let can_flag_mines = self.mine_flag_counter < self.mine_locations.len() as u32;
+        let (row, col) = self.tile_to_indices(tile_number);
+
+        let mut new_flag: Option<Flag> = None;
+
+        if let Some(flag) = self.get_tile_flag(tile_number) {
+            match flag {
+                Flag::Mine => {
+                    new_flag = Some(Flag::Question);
+                    self.mine_flag_counter -= 1;
+                },
+                Flag::Question => new_flag = None,
+            }
+        } else {
+            // currently no flag
+            if can_flag_mines {
+                new_flag = Some(Flag::Mine);
+                self.mine_flag_counter += 1;
+            } else {
+                new_flag = Some(Flag::Question);
+            }
+        }
+        self.tiles[row][col].set_flag(new_flag);
+        println!("mines: {} / {}", self.mine_flag_counter, self.mine_locations.len());
     }
 
     pub fn get_tile_content(&self, tile_number: usize) -> TileContent {
@@ -284,6 +335,34 @@ impl Minefield {
             self.uncover_tile(neighbour_index);
         }
     }
+
+    pub fn check_win(&self) -> bool {
+        for mine_index in self.mine_locations.iter() {
+            if let Some(flag) = self.get_tile_flag(*mine_index) {
+                match flag {
+                    Flag::Mine => {}, // good, need all the others
+                    _ => { return false; } // only mine flags count
+                }
+            } else {
+                // no flag on mine: no win
+                return false;
+            }
+        }
+
+        // all mines are flagged as mines, need the rest of the board to be not hidden
+        let total_tiles = self.rows * self.cols;
+        for i in 0..total_tiles {
+            if self.mine_locations.contains(&i) {
+                // skip mines
+                continue;
+            }
+            if self.tile_is_hidden(i) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 #[derive(Clone)]
@@ -307,7 +386,6 @@ enum Flag {
 
 impl Tile {
     pub fn uncover(&mut self) {
-        // println!("i am uncovered, {:?} {:?}", self.content, self.flag);
         self.hidden = false;
     }
 
@@ -315,16 +393,8 @@ impl Tile {
         self.hidden = true;
     }
 
-    pub fn flag(&mut self) {
-        // println!("i am flagged, {:?}, {:?}", self.content, self.flag);
-        if let Some(flag) = self.flag.clone() {
-            match flag {
-                Flag::Mine => self.flag = Some(Flag::Question),
-                Flag::Question => self.flag = None,
-            }
-        } else {
-            self.flag = Some(Flag::Mine);
-        }
+    pub fn set_flag(&mut self, flag: Option<Flag>) {
+        self.flag = flag;
     }
 
     fn reset_flag(&mut self) {
